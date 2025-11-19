@@ -1,236 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>FaceShape Styler — Deteksi Bentuk Wajah & Rekomendasi</title>
+<title>FaceMesh Styler — Mediapipe Face Shape</title>
 
-<!-- face-api.js (specific version) -->
-<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<!-- Mediapipe Face Mesh + drawing utils + camera utils -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
 <style>
   :root{
-    --bg1:#0f1724;
-    --bg2:#123;
-    --card: rgba(255,255,255,0.06);
-    --glass: rgba(255,255,255,0.06);
-    --accent:#00d4ff;
-    --muted:#cbd5e1;
+    --bg1:#0f1724; --bg2:#10203a; --card: rgba(255,255,255,0.04);
+    --accent:#00d4ff; --muted:#cbd5e1;
   }
   [data-theme="light"]{
-    --bg1:#f6f8fb;
-    --bg2:#eef2f7;
-    --card: rgba(0,0,0,0.04);
-    --glass: rgba(255,255,255,0.8);
-    --accent:#0ea5a5;
-    --muted:#334155;
+    --bg1:#f6fafc; --bg2:#eef6fb; --card: rgba(0,0,0,0.04); --accent:#0ea5a5; --muted:#123;
   }
+
   *{box-sizing:border-box}
   body{
-    margin:0;
-    font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial; color:var(--muted);
     background: linear-gradient(135deg,var(--bg1),var(--bg2));
-    color:var(--muted);
-    min-height:100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:28px;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:28px;
   }
 
-  .app{
-    width:100%;
-    max-width:1100px;
-    display:grid;
-    grid-template-columns: 1fr 380px;
-    gap:20px;
-  }
+  .app{ width:100%; max-width:1100px; display:grid; grid-template-columns:1fr 360px; gap:20px; }
 
-  .panel{
-    background:var(--card);
-    border-radius:14px;
-    padding:18px;
-    backdrop-filter: blur(8px) saturate(120%);
-    box-shadow: 0 8px 30px rgba(2,6,23,0.6);
-  }
+  .panel{ background:var(--card); border-radius:14px; padding:16px; backdrop-filter: blur(8px); box-shadow:0 8px 30px rgba(2,6,23,0.6); }
 
-  header.app-head{
-    grid-column: 1 / -1;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
-    margin-bottom:6px;
-  }
+  header{ grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px; }
+  h1{margin:0;font-size:18px}
 
-  h1{
-    margin:0;
-    font-size:18px;
-    color:var(--muted);
-  }
+  .controls{ display:flex; gap:8px; align-items:center;}
+  .btn{ background:var(--accent); border:none; padding:8px 12px; border-radius:10px; color:#000; font-weight:700; cursor:pointer; }
+  .btn.ghost{ background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04); }
+  .file-label{ padding:10px;border-radius:10px; border:2px dashed rgba(255,255,255,0.04); cursor:pointer; display:inline-block; }
 
-  .controls{
-    display:flex;
-    gap:10px;
-    align-items:center;
-  }
+  .stage{ display:flex; flex-direction:column; gap:12px; }
+  .drop-area{ position:relative; border-radius:12px; padding:12px; min-height:420px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; border:2px dashed rgba(255,255,255,0.04); }
+  .drop-area.drag{ border-color: rgba(0,212,255,0.8); box-shadow:0 10px 40px rgba(0,212,255,0.06); }
 
-  .btn{
-    background:var(--accent);
-    color:#000;
-    border:none;
-    padding:10px 12px;
-    border-radius:10px;
-    font-weight:600;
-    cursor:pointer;
-  }
-  .btn.ghost{
-    background:transparent;
-    color:var(--muted);
-    border:1px solid rgba(255,255,255,0.06);
-  }
-  label.file{
-    display:inline-block;
-    padding:10px;
-    border-radius:10px;
-    border:2px dashed rgba(255,255,255,0.05);
-    cursor:pointer;
-    color:var(--muted);
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
-  }
+  #preview{ max-width:100%; max-height:560px; border-radius:12px; display:block; object-fit:contain; }
+  canvas#overlay{ position:absolute; left:12px; top:12px; pointer-events:auto; border-radius:12px; }
 
-  /* Left big panel content */
-  .stage{
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-  }
+  .actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
 
-  .drop-area{
-    position:relative;
-    border-radius:12px;
-    padding:12px;
-    min-height:360px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    flex-direction:column;
-    gap:12px;
-    border:2px dashed rgba(255,255,255,0.04);
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
-  }
+  .sidebar .card{ margin-bottom:12px; }
 
-  .drop-area.dragover{
-    border-color: rgba(0,212,255,0.8);
-    box-shadow: 0 8px 30px rgba(0,212,255,0.06);
-  }
+  .history-item{ display:flex; gap:8px; align-items:center; cursor:pointer; padding:6px; border-radius:8px; }
+  .thumb{ width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.03); }
 
-  #previewImg{
-    max-width:100%;
-    max-height:420px;
-    border-radius:10px;
-    display:block;
-    object-fit:contain;
-  }
-
-  canvas#overlay{
-    position:absolute;
-    left:12px;
-    top:12px;
-    pointer-events:auto;
-  }
-
-  .actions{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    justify-content:center;
-  }
-
-  /* right sidebar */
-  .sidebar{
-    display:flex;
-    flex-direction:column;
-    gap:14px;
-  }
-
-  .card{
-    padding:12px;
-    border-radius:12px;
-    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  }
-
-  .meta{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
-
-  .list{
-    max-height:300px;
-    overflow:auto;
-    margin-top:8px;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-  }
-
-  .history-item{
-    display:flex;
-    gap:8px;
-    align-items:center;
-    cursor:pointer;
-    padding:6px;
-    border-radius:8px;
-  }
-  .history-item:hover{ background: rgba(255,255,255,0.02); }
-
-  .thumb{
-    width:56px;height:56px;border-radius:6px; object-fit:cover; flex-shrink:0;
-    border:1px solid rgba(255,255,255,0.03);
-  }
-
-  .info{ font-size:13px; color:var(--muted); }
-
-  .result-card{ text-align:left; color:var(--muted); }
-
-  .loader{
-    width:40px;height:40px;border-radius:50%;
-    border:4px solid rgba(255,255,255,0.08);
-    border-top-color:var(--accent);
-    animation:spin 1s linear infinite;
-    margin:auto;
-  }
+  .loader{ width:36px; height:36px; border:4px solid rgba(255,255,255,0.08); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; margin:auto;}
   @keyframes spin{ to{transform:rotate(360deg)} }
 
-  .face-label{
-    background:var(--accent);
-    color:#000;
-    padding:4px 8px;
-    border-radius:8px;
-    font-weight:700;
-    font-size:12px;
-    position:absolute;
-    transform:translate(-50%,-140%);
-    pointer-events:none;
-  }
+  .face-badge{ position:absolute; background:var(--accent); color:#000; padding:6px 8px; border-radius:8px; font-weight:800; transform:translate(-50%,-140%); pointer-events:auto; cursor:pointer; }
 
-  .small{
-    font-size:13px;
-    color:var(--muted);
-  }
+  .result-card{ padding:10px; border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); }
 
-  /* responsiveness */
-  @media (max-width:980px){
-    .app{ grid-template-columns: 1fr; padding-bottom:60px; }
-    .sidebar{ order:2; }
-  }
+  @media (max-width:980px){ .app{ grid-template-columns: 1fr; } .sidebar{ order:2 } }
 </style>
 </head>
 <body data-theme="dark">
 
 <div class="app">
 
-  <header class="app-head" style="grid-column:1/-1">
+  <header>
     <div>
-      <h1>FaceShape Styler</h1>
-      <div class="small">Deteksi bentuk wajah & rekomendasi potongan rambut — client-side</div>
+      <h1>FaceMesh Styler (Mediapipe)</h1>
+      <div style="font-size:13px;color:var(--muted)">Deteksi bentuk wajah — offline client-side setelah model di-cache</div>
     </div>
 
     <div class="controls">
@@ -239,310 +78,264 @@
     </div>
   </header>
 
-  <!-- LEFT: main stage -->
+  <!-- left -->
   <section class="panel stage">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div class="meta">
-          <div class="small">Model status:</div>
-          <div id="modelStatus" class="small">Memuat model…</div>
-        </div>
-
-        <div>
-          <label class="file">
-            Pilih file
-            <input id="fileInput" type="file" accept="image/*" style="display:none">
-          </label>
-          <button id="webcamBtn" class="btn ghost">Buka Kamera</button>
-          <button id="captureBtn" class="btn" style="display:none">Ambil Foto</button>
-        </div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:13px;color:var(--muted)">Model status: <span id="modelStatus" style="font-weight:700">Memuat...</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label class="file-label">
+          Pilih file
+          <input id="fileInput" type="file" accept="image/*" style="display:none" />
+        </label>
+        <button id="webcamBtn" class="btn ghost">Buka Kamera</button>
+        <button id="captureBtn" class="btn" style="display:none">Ambil Foto</button>
       </div>
     </div>
 
     <div id="drop" class="drop-area">
-      <div id="dropInner" style="width:100%;height:100%;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-        <div id="dropHint" style="text-align:center">
-          <div style="font-weight:700;color:var(--muted)">Seret & lepas foto di sini</div>
-          <div class="small" style="margin-top:8px">atau klik "Pilih file" / gunakan kamera</div>
-        </div>
+      <div id="dropHint" style="text-align:center">
+        <div style="font-weight:700;color:var(--muted)">Seret & lepas foto di sini</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">atau pilih file / gunakan kamera</div>
+      </div>
 
-        <img id="previewImg" alt="Preview foto" style="display:none">
-        <!-- canvas overlay untuk gambar kotak wajah -->
-        <canvas id="overlay" style="display:none"></canvas>
-        <div id="processing" style="display:none;margin-top:10px">
-          <div class="loader"></div>
-          <div class="small" style="margin-top:8px">Memproses...</div>
-        </div>
+      <img id="preview" alt="preview" style="display:none" />
+      <canvas id="overlay" style="display:none"></canvas>
+
+      <div id="processing" style="display:none">
+        <div class="loader"></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:8px">Memproses...</div>
       </div>
     </div>
 
     <div class="actions">
-      <button id="downloadBtn" class="btn ghost" disabled>Download Hasil (PNG)</button>
       <button id="analyzeBtn" class="btn" disabled>Deteksi Ulang</button>
+      <button id="downloadBtn" class="btn ghost" disabled>Download Hasil</button>
       <button id="saveBtn" class="btn" disabled>Simpan Riwayat</button>
     </div>
 
-    <div id="resultPanel" class="card" style="display:none;margin-top:8px">
-      <div class="result-card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div class="small">Hasil Analisis</div>
-            <div id="shapeText" style="font-size:18px;font-weight:700;color:var(--muted);">—</div>
-          </div>
-          <div id="metrics"></div>
+    <div id="resultPanel" class="result-card" style="display:none;margin-top:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:13px;color:var(--muted)">Hasil:</div>
+          <div id="shapeText" style="font-size:18px;font-weight:800;color:var(--muted)">-</div>
         </div>
-        <div style="margin-top:12px">
-          <div class="small">Rekomendasi potongan rambut:</div>
-          <ul id="recommendations"></ul>
-        </div>
+        <div id="metricBox" style="text-align:right;font-size:13px;color:var(--muted)"></div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:13px;color:var(--muted)">Rekomendasi:</div>
+        <ul id="recList"></ul>
       </div>
     </div>
-
   </section>
 
-  <!-- RIGHT: sidebar -->
+  <!-- right (sidebar) -->
   <aside class="panel sidebar">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
-          <div class="small">Riwayat Analisis</div>
-          <div style="font-weight:700;color:var(--muted)">Disimpan lokal</div>
+          <div style="font-size:13px;color:var(--muted);font-weight:700">Riwayat Analisis</div>
+          <div style="font-size:12px;color:var(--muted)">Tersimpan di local</div>
         </div>
-        <div id="historyCount" class="small">0</div>
+        <div id="historyCount" style="font-weight:700;color:var(--muted)">0</div>
       </div>
 
-      <div class="list" id="historyList" style="margin-top:10px">
-        <!-- history items -->
-      </div>
+      <div id="historyList" style="margin-top:10px;max-height:420px;overflow:auto"></div>
     </div>
 
-    <div class="card">
-      <div class="small" style="font-weight:700">Petunjuk</div>
-      <ol style="padding-left:16px;margin-top:8px" class="small">
+    <div class="card" style="margin-top:12px">
+      <div style="font-size:13px;color:var(--muted);font-weight:700">Petunjuk</div>
+      <ol style="font-size:13px;color:var(--muted);margin-top:8px;padding-left:18px">
         <li>Gunakan foto frontal (wajah menghadap kamera).</li>
-        <li>Jika ada beberapa wajah, klik kotak wajah untuk memilih.</li>
-        <li>Bisa simpan hasil atau unduh gambar.</li>
+        <li>Jika ada beberapa wajah, klik badge di atas foto untuk memilih.</li>
+        <li>Simpan hasil jika ingin melihat kembali.</li>
       </ol>
     </div>
   </aside>
 
 </div>
 
-<!-- Hidden video element for webcam -->
-<video id="video" autoplay playsinline style="display:none;"></video>
+<!-- hidden video for webcam -->
+<video id="video" autoplay playsinline style="display:none"></video>
 
 <script>
-/*
-  FaceShape Styler — single-file app
-  Notes:
-  - Uses face-api.js for detection and 68-landmarks.
-  - Models are loaded from the project's GitHub Pages (cross-origin friendly).
-  - Works client-side; model files are fetched from remote on first load.
-*/
+/* =========================
+   FaceMesh Styler (Mediapipe)
+   - Upload/Drag&Drop
+   - Webcam capture
+   - Multi-face detection
+   - Draw mesh & bounding box
+   - Compute simple heuristics to decide face shape
+   - Save history (localStorage)
+   ========================= */
 
-/* ---------- Config ---------- */
-const MODEL_BASE = "https://justadudewhohacks.github.io/face-api.js/models/"; // public model host
-const previewImg = document.getElementById("previewImg");
-const overlay = document.getElementById("overlay");
-const drop = document.getElementById("drop");
-const dropInner = document.getElementById("dropInner");
-const dropHint = document.getElementById("dropHint");
-const processing = document.getElementById("processing");
-const modelStatus = document.getElementById("modelStatus");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const downloadBtn = document.getElementById("downloadBtn");
-const saveBtn = document.getElementById("saveBtn");
-const resultPanel = document.getElementById("resultPanel");
-const shapeText = document.getElementById("shapeText");
-const recommendations = document.getElementById("recommendations");
-const metricsBox = document.getElementById("metrics");
-const fileInput = document.getElementById("fileInput");
-const historyList = document.getElementById("historyList");
-const historyCount = document.getElementById("historyCount");
-const modelRequired = ["ssd_mobilenetv1","face_landmark_68_model"];
+const preview = document.getElementById('preview');
+const overlay = document.getElementById('overlay');
+const drop = document.getElementById('drop');
+const dropHint = document.getElementById('dropHint');
+const processing = document.getElementById('processing');
+const modelStatus = document.getElementById('modelStatus');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const saveBtn = document.getElementById('saveBtn');
+const resultPanel = document.getElementById('resultPanel');
+const shapeText = document.getElementById('shapeText');
+const recList = document.getElementById('recList');
+const metricBox = document.getElementById('metricBox');
+const fileInput = document.getElementById('fileInput');
+const historyList = document.getElementById('historyList');
+const historyCount = document.getElementById('historyCount');
 
-/* UI state */
-let detections = []; // array of {box, landmarks, descriptor}
-let selectedIndex = null;
-let currentImage = null; // Image or canvas to download
+const video = document.getElementById('video');
+const webcamBtn = document.getElementById('webcamBtn');
+const captureBtn = document.getElementById('captureBtn');
+
+let faceMesh = null;
+let cameraInstance = null;
+let detections = []; // {box:{x,y,w,h}, landmarks: [ {x,y,z} ... ] }
+let selectedFace = 0;
+let currentImageSrc = null;
 let history = loadHistory();
 
-/* RECOMMENDATION MAP */
+/* Recommendation map */
 const RECO = {
-  "Oval": ["Shaggy Cut", "Pixie Cut", "Bob Short", "Layered Cut"],
-  "Bulat": ["Layer Panjang", "Side Part", "Curtain Bang", "Long Waves"],
-  "Kotak": ["Soft Layer", "Wavy Medium", "Side Bob", "Feathered Cut"],
-  "Heart": ["Chin-Length Bob", "Side Sweep", "Long Curl", "Soft Pixie"],
-  "Diamond": ["Medium Layer", "Curly Bob", "Shag Soft", "Side Bangs"],
-  "Oblong": ["Side Fringe", "Layered Long", "Medium Waves", "Curtain Style"]
+  "Oval": ["Shaggy Cut","Pixie Cut","Bob","Layered Cut"],
+  "Bulat": ["Layer Panjang","Side Part","Curtain Bang","Long Waves"],
+  "Kotak": ["Soft Layer","Wavy Medium","Side Bob","Feathered Cut"],
+  "Heart": ["Chin-Length Bob","Side Sweep","Long Curl","Soft Pixie"],
+  "Diamond": ["Medium Layer","Curly Bob","Shag Soft","Side Bangs"],
+  "Oblong": ["Side Fringe","Layered Long","Medium Waves","Curtain Style"]
 };
 
-/* ---------- Model Loading ---------- */
-async function loadModels(){
-  modelStatus.innerText = "Memuat model...";
-  try {
-    // load ssd mobilenet for detection and 68-landmark
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_BASE);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_BASE);
-    modelStatus.innerText = "Model siap ✅";
-  } catch (e){
-    console.error(e);
-    modelStatus.innerText = "Gagal memuat model — cek koneksi";
-    alert("Gagal memuat model face-api. Pastikan perangkat terhubung internet.");
-  }
-}
-loadModels();
-
-/* ---------- Helpers ---------- */
-function setProcessing(flag){
+/* --- Utility --- */
+function showProcessing(flag){
   processing.style.display = flag ? "flex" : "none";
 }
-
-function clearOverlay(){
-  overlay.width = 0; overlay.height = 0;
-  overlay.style.display = "none";
-  // remove face-labels
-  document.querySelectorAll(".face-label").forEach(n=>n.remove());
+function showOverlay(flag){
+  overlay.style.display = flag ? "block" : "none";
 }
-
-/* Fit canvas overlay to image */
-function fitCanvasToImage(img){
-  overlay.style.display = "block";
-  overlay.width = img.naturalWidth;
-  overlay.height = img.naturalHeight;
-  overlay.style.width = img.clientWidth + "px";
-  overlay.style.height = img.clientHeight + "px";
-  overlay.style.left = img.offsetLeft + "px";
-  overlay.style.top = img.offsetTop + "px";
-  overlay.getContext("2d").clearRect(0,0,overlay.width, overlay.height);
-}
-
-/* draw boxes for detections */
-function drawDetections(){
-  if(!previewImg.naturalWidth) return;
-  fitCanvasToImage(previewImg);
-  const ctx = overlay.getContext("2d");
+function clearCanvas(){
+  const ctx = overlay.getContext('2d');
   ctx.clearRect(0,0,overlay.width,overlay.height);
-  // scale factors from display size to natural size
-  const sx = previewImg.naturalWidth / previewImg.clientWidth;
-  const sy = previewImg.naturalHeight / previewImg.clientHeight;
+  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
+}
 
-  // ensure any previous labels removed
-  document.querySelectorAll(".face-label").forEach(n=>n.remove());
+/* Fit overlay canvas to displayed image size */
+function fitCanvas(){
+  overlay.width = preview.naturalWidth || preview.width;
+  overlay.height = preview.naturalHeight || preview.height;
+  overlay.style.width = preview.clientWidth + 'px';
+  overlay.style.height = preview.clientHeight + 'px';
+  // position relative handled by parent (overlay is absolute positioned inside drop area)
+}
 
-  detections.forEach((d,i)=>{
+/* map normalized mediapipe coords to natural px */
+function toNaturalPoint(pt){
+  return { x: pt.x * (overlay.width), y: pt.y * (overlay.height), z: pt.z };
+}
+
+/* draw detections */
+function drawAll(){
+  if(!preview.src) return;
+  fitCanvas();
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+
+  detections.forEach((d,i) => {
     const box = d.box;
-    ctx.lineWidth = (i===selectedIndex)?6:3;
-    ctx.strokeStyle = (i===selectedIndex) ? "rgba(0,212,255,0.9)" : "rgba(255,255,255,0.45)";
-    ctx.fillStyle = (i===selectedIndex) ? "rgba(0,212,255,0.12)" : "rgba(255,255,255,0.02)";
+    // box in natural px
+    ctx.lineWidth = (i===selectedFace)?6:3;
+    ctx.strokeStyle = (i===selectedFace)?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.45)';
+    ctx.fillStyle = (i===selectedFace)?'rgba(0,212,255,0.06)':'rgba(255,255,255,0.02)';
     ctx.beginPath();
     ctx.rect(box.x, box.y, box.width, box.height);
     ctx.fill();
     ctx.stroke();
 
-    // label in DOM (position relative to displayed image)
-    const label = document.createElement("div");
-    label.className = "face-label";
-    label.innerText = `Face ${i+1}`;
-    // position label relative to previewImg container
-    label.style.left = (previewImg.offsetLeft + box.x / sx) + "px";
-    label.style.top = (previewImg.offsetTop + box.y / sy) + "px";
-    // attach and make clickable
-    label.style.position = "absolute";
-    label.style.cursor = "pointer";
-    label.addEventListener("click", ()=> selectFace(i));
-    document.body.appendChild(label);
+    // draw mesh for selected face
+    if(i===selectedFace){
+      // draw some face landmarks
+      ctx.fillStyle = 'rgba(0,212,255,0.06)';
+      ctx.strokeStyle = 'rgba(0,212,255,0.25)';
+      d.landmarks.forEach(p => {
+        // small circle
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.2, 0, Math.PI*2);
+        ctx.fill();
+      });
+    }
+
+    // add clickable badge label above box (DOM element)
+    const existing = document.getElementById('badge-'+i);
+    if(!existing){
+      const badge = document.createElement('div');
+      badge.className = 'face-badge';
+      badge.id = 'badge-'+i;
+      badge.innerText = `Face ${i+1}`;
+      // position relative to preview DOM position
+      // compute display coords
+      const rect = preview.getBoundingClientRect();
+      const scaleX = preview.clientWidth / preview.naturalWidth;
+      const scaleY = preview.clientHeight / preview.naturalHeight;
+      const left = rect.left + (box.x * scaleX) + (box.width * scaleX)/2;
+      const top = rect.top + (box.y * scaleY);
+      badge.style.left = left + 'px';
+      badge.style.top = top + 'px';
+      document.body.appendChild(badge);
+      badge.addEventListener('click', ()=>{ selectedFace = i; showResultFor(i); drawAll(); });
+    } else {
+      // reposition existing
+      const rect = preview.getBoundingClientRect();
+      const scaleX = preview.clientWidth / preview.naturalWidth;
+      const scaleY = preview.clientHeight / preview.naturalHeight;
+      existing.style.left = (rect.left + (box.x * scaleX) + (box.width * scaleX)/2) + 'px';
+      existing.style.top = (rect.top + (box.y * scaleY)) + 'px';
+    }
+  });
+
+  // remove extra badges if less faces than before
+  document.querySelectorAll('.face-badge').forEach(el=>{
+    const id = el.id;
+    const idx = parseInt(id.split('-')[1]);
+    if(idx >= detections.length) el.remove();
   });
 }
 
-/* select face by index */
-function selectFace(i){
-  selectedIndex = i;
-  drawDetections();
-  showResultForIndex(i);
-}
+/* --- Face shape heuristics ---
+   Using Mediapipe 468 landmarks. We'll use some well-known indices:
+   - Chin (152)
+   - Left cheek (~234)
+   - Right cheek (~454)
+   - Jaw left (~127), jaw right (~356)
+   - Forehead approx: average of points near eyebrows (10 and 338/  'upper' points). We'll use point 10 (approx forehead near hairline)
+   These heuristics are approximate and work well for frontal photos.
+*/
+function computeMetrics(landmarks){
+  // landmarks is array of {x:..., y:..., z:...} in natural px
+  const idx = (i) => landmarks[i];
+  const chin = idx(152);
+  const leftCheek = idx(234);
+  const rightCheek = idx(454);
+  const jawLeft = idx(127);
+  const jawRight = idx(356);
+  // point 10 is near center forehead
+  const forehead = idx(10);
 
-/* convert screen coords to natural coords factor */
-function displayToNaturalCoord(x,y){
-  const rect = previewImg.getBoundingClientRect();
-  const px = x - rect.left;
-  const py = y - rect.top;
-  const nx = px * (previewImg.naturalWidth/rect.width);
-  const ny = py * (previewImg.naturalHeight/rect.height);
-  return {x:nx,y:ny};
-}
+  const faceWidth = distance(leftCheek, rightCheek);
+  const jawWidth = distance(jawLeft, jawRight);
+  const faceHeight = distance(forehead, chin);
 
-/* ---------- Detection logic ---------- */
-async function detectFromImage(imgElement){
-  if(!faceapi.nets.ssdMobilenetv1.params) {
-    alert("Model belum siap; tunggu model selesai dimuat.");
-    return;
-  }
-  setProcessing(true);
-  clearOverlay();
-  detections = [];
-  selectedIndex = null;
-  resultPanel.style.display = "none";
-  analyzeBtn.disabled = true;
-  downloadBtn.disabled = true;
-  saveBtn.disabled = true;
-
-  // faceapi expects image or canvas; use image element
-  const full = await faceapi.detectAllFaces(imgElement).withFaceLandmarks();
-  if(!full || full.length===0){
-    setProcessing(false);
-    alert("Tidak ada wajah terdeteksi. Gunakan foto frontal dengan pencahayaan baik.");
-    return;
-  }
-
-  // convert detections to simpler objects
-  detections = full.map(f=>{
-    const box = f.detection.box;
-    const lm = f.landmarks;
-    return { box: box, landmarks: lm };
-  });
-
-  // draw
-  drawDetections();
-  setProcessing(false);
-  analyzeBtn.disabled = false;
-  // default select first face
-  selectFace(0);
-  currentImage = imgElement; // for download
-}
-
-/* ---------- Shape computation from landmarks ---------- */
-function computeFaceMetrics(landmarks){
-  // landmarks: faceapi.FaceLandmarks68
-  const jaw = landmarks.getJawOutline(); // array points [0..16]
-  const leftCheek = jaw[2]; // approx
-  const rightCheek = jaw[14];
-  const chin = jaw[8];
-  // eyebrows: combine left+right top
-  const leftBrow = landmarks.getLeftEyeBrow();
-  const rightBrow = landmarks.getRightEyeBrow();
-  const browCenter = { x: (leftBrow[2].x + rightBrow[2].x)/2, y: (leftBrow[2].y + rightBrow[2].y)/2 };
-
-  // widths
-  const faceWidth = distance(jaw[2], jaw[14]); // approximate cheek width
-  const jawWidth = distance(jaw[4], jaw[12]);
-  const foreheadY = Math.min(leftBrow[0].y, rightBrow[0].y);
-  const faceHeight = Math.abs(chin.y - foreheadY);
-
-  return { faceWidth, jawWidth, faceHeight, chin, browCenter };
+  return { faceWidth, jawWidth, faceHeight, chin, forehead };
 }
 
 function distance(a,b){
-  return Math.hypot(a.x-b.x, a.y-b.y);
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function decideShape(metrics){
   const {faceWidth, jawWidth, faceHeight} = metrics;
   const h_w = faceHeight / faceWidth;
-  const f_j_ratio = faceWidth / (jawWidth || 1);
-
-  // heuristics (tweakable)
-  if(h_w > 1.48) return "Oblong";
+  // tune thresholds (empirical)
+  if(h_w > 1.5) return "Oblong";
   if(Math.abs(faceWidth - jawWidth) < Math.max(12, faceWidth*0.08)) return "Kotak";
   if(jawWidth < faceWidth * 0.78) return "Heart";
   if(faceWidth > jawWidth * 1.28) return "Diamond";
@@ -550,252 +343,266 @@ function decideShape(metrics){
   return "Oval";
 }
 
-/* ---------- UI result ---------- */
-function showResultForIndex(i){
+/* show result for a selected face index */
+function showResultFor(i){
   if(!detections[i]) return;
-  const lm = detections[i].landmarks;
-  const metrics = computeFaceMetrics(lm);
+  const metrics = computeMetrics(detections[i].landmarks);
   const shape = decideShape(metrics);
-
   shapeText.innerText = shape;
-  // show metrics
-  metricsBox.innerHTML = `<div class="small">Rasio H/W: ${(metrics.faceHeight/metrics.faceWidth).toFixed(2)}</div>`;
-  recommendations.innerHTML = "";
+  metricBox.innerHTML = `Rasio H/W: ${(metrics.faceHeight/metrics.faceWidth).toFixed(2)}`;
+  recList.innerHTML = '';
   (RECO[shape] || []).forEach(r=>{
-    const li = document.createElement("li");
-    li.innerText = r;
-    recommendations.appendChild(li);
+    const li = document.createElement('li'); li.innerText = r; recList.appendChild(li);
   });
-
-  resultPanel.style.display = "block";
+  resultPanel.style.display = 'block';
   downloadBtn.disabled = false;
   saveBtn.disabled = false;
 }
 
-/* ---------- File handling ---------- */
-fileInput.addEventListener("change", async (ev)=>{
-  const f = ev.target.files && ev.target.files[0];
+/* --- Handlers for mediapipe results --- */
+function onResults(results){
+  // results.multiFaceLandmarks: array of landmarks in normalized coords (x,y in [0..1]) relative to image
+  // results.image is the input image (HTMLImageElement/HTMLVideoElement/HTMLCanvasElement)
+  clearCanvas();
+  detections = [];
+  if(!results.multiFaceLandmarks || results.multiFaceLandmarks.length===0){
+    showProcessing(false); drawAll(); return;
+  }
+
+  // prepare overlay dimensions based on natural size of input image
+  // set overlay to input natural size
+  // results.image may be preview image element passed; we'll assume preview has naturalWidth/naturalHeight
+  fitCanvas();
+
+  // convert normalized to natural px coords and make bounding box
+  results.multiFaceLandmarks.forEach(landArr => {
+    const pts = landArr.map(p => toNaturalPoint(p));
+    // compute bounding box
+    const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const box = { x: minX, y: minY, width: (maxX - minX), height: (maxY - minY) };
+    detections.push({ box, landmarks: pts });
+  });
+
+  // default select first face if new
+  selectedFace = 0;
+  drawAll();
+  showProcessing(false);
+  showResultFor(selectedFace);
+}
+
+/* --- Initialize Mediapipe FaceMesh --- */
+async function initFaceMesh(){
+  modelStatus.innerText = "Memuat model FaceMesh...";
+  faceMesh = new FaceMesh({
+    locateFile: (file) => {
+      // Mediapipe will fetch model files from CDN automatically
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }
+  });
+  faceMesh.setOptions({
+    maxNumFaces: 4,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+  faceMesh.onResults(onResults);
+  modelStatus.innerText = "Model siap ✅";
+}
+initFaceMesh();
+
+/* --- File & drag/drop handlers --- */
+fileInput.addEventListener('change', async (e)=>{
+  const f = e.target.files && e.target.files[0];
   if(!f) return;
   const url = URL.createObjectURL(f);
-  await loadImageFromURL(url);
+  await loadImage(url);
 });
 
-drop.addEventListener("dragover",(e)=>{ e.preventDefault(); drop.classList.add("dragover"); });
-drop.addEventListener("dragleave",(e)=>{ e.preventDefault(); drop.classList.remove("dragover"); });
-drop.addEventListener("drop", async (e)=>{
-  e.preventDefault();
-  drop.classList.remove("dragover");
+drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', e=>{ e.preventDefault(); drop.classList.remove('drag'); });
+drop.addEventListener('drop', async (e)=>{
+  e.preventDefault(); drop.classList.remove('drag');
   const f = e.dataTransfer.files && e.dataTransfer.files[0];
   if(!f) return;
   const url = URL.createObjectURL(f);
-  await loadImageFromURL(url);
+  await loadImage(url);
 });
 
-/* Load image into preview and run detection */
-async function loadImageFromURL(url){
-  previewImg.style.display = "none";
-  clearOverlay();
-  resultPanel.style.display = "none";
-  setProcessing(true);
+/* load image into preview and run faceMesh */
+async function loadImage(src){
+  // reset
+  clearCanvas(); resultPanel.style.display = 'none';
+  showProcessing(true);
+  preview.style.display = 'none';
+  // remove existing badges
+  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
 
-  return new Promise((res,rej)=>{
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = async ()=>{
-      previewImg.src = url;
-      previewImg.onload = async ()=>{
-        setProcessing(false);
-        await detectFromImage(previewImg);
-        res();
-      };
-      previewImg.style.display = "block";
-    };
-    img.onerror = (err)=>{
-      setProcessing(false);
-      alert("Gagal memuat gambar.");
-      rej(err);
-    };
-    img.src = url;
-  });
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = async ()=>{
+    preview.src = src;
+    currentImageSrc = src;
+    // wait image DOM updates
+    preview.style.display = 'block';
+    // ensure overlay sizing (after image rendered)
+    await new Promise(r => setTimeout(r, 120));
+    fitCanvas();
+    showOverlay(true);
+    // send the image element to FaceMesh
+    await faceMesh.send({image: preview});
+  };
+  img.onerror = ()=>{
+    showProcessing(false);
+    alert('Gagal memuat gambar.');
+  };
+  img.src = src;
 }
 
-/* ---------- Webcam ---------- */
-const video = document.getElementById("video");
+/* --- Webcam support --- */
 let streamRef = null;
-const webcamBtn = document.getElementById("webcamBtn");
-const captureBtn = document.getElementById("captureBtn");
-
-webcamBtn.addEventListener("click", async ()=>{
+webcamBtn.addEventListener('click', async ()=>{
   if(streamRef){
-    // stop
-    streamRef.getTracks().forEach(t=>t.stop());
-    streamRef = null;
-    video.style.display = "none";
-    captureBtn.style.display = "none";
-    webcamBtn.innerText = "Buka Kamera";
-  } else {
-    try{
-      streamRef = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}, audio:false});
-      video.srcObject = streamRef;
-      video.style.display = "block";
-      captureBtn.style.display = "inline-block";
-      webcamBtn.innerText = "Tutup Kamera";
-      // show video overlay inside drop area
-      // capture frame when clicking captureBtn
-    } catch(e){
-      alert("Tidak dapat mengakses kamera: " + e.message);
-    }
+    // stop camera
+    streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display='none'; captureBtn.style.display='none'; webcamBtn.innerText='Buka Kamera';
+    return;
+  }
+  try{
+    streamRef = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
+    video.srcObject = streamRef;
+    video.style.display = 'block';
+    captureBtn.style.display = 'inline-block';
+    webcamBtn.innerText = 'Tutup Kamera';
+    // optionally preview video inside drop area when wanted
+    // We'll capture still when user clicks capture
+  } catch(err){
+    alert('Tidak dapat mengakses kamera: ' + err.message);
   }
 });
 
-captureBtn.addEventListener("click", async ()=>{
-  // capture current frame to canvas and set previewImg
-  const v = video;
-  const c = document.createElement("canvas");
-  c.width = v.videoWidth;
-  c.height = v.videoHeight;
-  const ctx = c.getContext("2d");
-  ctx.drawImage(v,0,0,c.width,c.height);
-  const data = c.toDataURL("image/png");
+captureBtn.addEventListener('click', async ()=>{
+  // capture a frame from video to canvas then load as image
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  const ctx = c.getContext('2d'); ctx.drawImage(video,0,0,c.width,c.height);
+  const data = c.toDataURL('image/png');
   // stop camera
-  if(streamRef){ streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display="none"; captureBtn.style.display="none"; webcamBtn.innerText = "Buka Kamera"; }
-  await loadImageFromURL(data);
+  if(streamRef){ streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display='none'; captureBtn.style.display='none'; webcamBtn.innerText='Buka Kamera'; }
+  await loadImage(data);
 });
 
-/* ---------- Download result as PNG ---------- */
-downloadBtn.addEventListener("click", async ()=>{
-  if(!currentImage) return;
-  // create a canvas same as natural size, draw image and overlay results
-  const c = document.createElement("canvas");
-  c.width = previewImg.naturalWidth;
-  c.height = previewImg.naturalHeight;
-  const ctx = c.getContext("2d");
-  // draw base image
-  // if previewImg.src is dataURL or blob URL, it will draw
-  ctx.drawImage(previewImg, 0, 0, c.width, c.height);
-
-  // draw boxes
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = "rgba(0,212,255,0.9)";
-  ctx.fillStyle = "rgba(0,212,255,0.08)";
-  detections.forEach((d,i)=>{
-    const b = d.box;
-    ctx.beginPath();
-    ctx.rect(b.x, b.y, b.width, b.height);
-    ctx.fill();
-    ctx.stroke();
-    // label
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(b.x, b.y - 28, 90, 26);
-    ctx.fillStyle = "#00f0ff";
-    ctx.font = "20px Inter, Arial";
-    ctx.fillText(`Face ${i+1}`, b.x+6, b.y - 8);
-    ctx.fillStyle = "rgba(0,212,255,0.08)";
-  });
-
-  // add text result
-  ctx.fillStyle = "rgba(0,0,0,0.5)";
-  ctx.fillRect(0, c.height - 120, c.width, 120);
-  ctx.fillStyle = "#fff";
-  ctx.font = "28px Inter, Arial";
-  ctx.fillText("FaceShape Styler — Hasil Analisis", 18, c.height - 80);
-  ctx.font = "20px Inter, Arial";
-  ctx.fillText(shapeText.innerText || "-", 18, c.height - 48);
-
-  const link = document.createElement("a");
-  link.download = `faceshape_result_${Date.now()}.png`;
-  link.href = c.toDataURL("image/png");
-  link.click();
+/* --- analyze / re-run button --- */
+analyzeBtn.addEventListener('click', async ()=>{
+  if(!preview.src) return;
+  showProcessing(true);
+  // re-run faceMesh on preview
+  await faceMesh.send({image: preview});
 });
 
-/* ---------- Save / History ---------- */
-saveBtn.addEventListener("click", ()=>{
-  if(!previewImg.src) return;
-  const ent = {
-    id: Date.now(),
-    date: new Date().toISOString(),
-    image: previewImg.src,
-    shape: shapeText.innerText || "-",
-    rec: Array.from(recommendations.querySelectorAll("li")).map(x=>x.innerText)
-  };
-  history.unshift(ent);
-  if(history.length>30) history.pop();
-  localStorage.setItem("faceshape_history_v1", JSON.stringify(history));
-  renderHistory();
-  alert("Hasil disimpan ke riwayat.");
-});
-
-function loadHistory(){
-  try {
-    const j = localStorage.getItem("faceshape_history_v1");
-    return j ? JSON.parse(j) : [];
-  } catch(e){ return []; }
-}
-
-function renderHistory(){
-  historyList.innerHTML = "";
-  historyCount.innerText = history.length;
-  history.forEach(h=>{
-    const row = document.createElement("div");
-    row.className = "history-item";
-    row.innerHTML = `<img class="thumb" src="${h.image}" /><div style="flex:1"><div style="font-weight:700;color:var(--muted)">${h.shape}</div><div class="small">${new Date(h.date).toLocaleString()}</div></div>`;
-    row.addEventListener("click", ()=> {
-      // load item
-      loadImageFromURL(h.image);
+/* --- download result --- */
+downloadBtn.addEventListener('click', ()=>{
+  if(!preview.src || detections.length===0) return alert('Tidak ada hasil untuk diunduh');
+  // create canvas with natural size and draw image + boxes + text
+  const c = document.createElement('canvas');
+  c.width = preview.naturalWidth; c.height = preview.naturalHeight;
+  const ctx = c.getContext('2d');
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    ctx.drawImage(img,0,0,c.width,c.height);
+    // draw boxes
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,212,255,0.9)'; ctx.fillStyle='rgba(0,212,255,0.06)';
+    detections.forEach((d,i)=>{
+      const b = d.box;
+      ctx.beginPath(); ctx.rect(b.x,b.y,b.width,b.height); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(b.x, b.y-30, 120, 28);
+      ctx.fillStyle = '#00f0ff'; ctx.font = '20px sans-serif'; ctx.fillText(`Face ${i+1}`, b.x+6, b.y-8);
+      ctx.fillStyle='rgba(0,212,255,0.06)';
     });
+    // write result text
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, c.height-110, c.width, 110);
+    ctx.fillStyle = '#fff'; ctx.font='26px sans-serif'; ctx.fillText('FaceMesh Styler — Hasil', 18, c.height-72);
+    ctx.font='20px sans-serif'; ctx.fillText(shapeText.innerText || '-', 18, c.height-44);
+
+    const link = document.createElement('a'); link.download = `faceshape_${Date.now()}.png`; link.href = c.toDataURL('image/png'); link.click();
+  };
+  img.src = preview.src;
+});
+
+/* --- Save to history (localStorage) --- */
+saveBtn.addEventListener('click', ()=>{
+  if(!preview.src) return;
+  const ent = { id: Date.now(), date: new Date().toISOString(), image: preview.src, shape: shapeText.innerText || '-', rec: Array.from(recList.querySelectorAll('li')).map(x=>x.innerText) };
+  history.unshift(ent); if(history.length>40) history.pop();
+  localStorage.setItem('faceshape_mediapipe_history_v1', JSON.stringify(history));
+  renderHistory();
+  alert('Disimpan ke riwayat lokal.');
+});
+
+/* load history */
+function loadHistory(){
+  try{ const j = localStorage.getItem('faceshape_mediapipe_history_v1'); return j?JSON.parse(j):[]; }catch(e){ return []; }
+}
+function renderHistory(){
+  historyList.innerHTML=''; historyCount.innerText = history.length;
+  history.forEach(h=>{
+    const row = document.createElement('div'); row.className='history-item';
+    row.innerHTML = `<img class="thumb" src="${h.image}"><div style="flex:1"><div style="font-weight:700;color:var(--muted)">${h.shape}</div><div style="font-size:12px;color:var(--muted)">${new Date(h.date).toLocaleString()}</div></div>`;
+    row.addEventListener('click', ()=> loadImage(h.image) );
     historyList.appendChild(row);
   });
 }
 renderHistory();
 
-document.getElementById("clearHistory").addEventListener("click", ()=>{
-  if(confirm("Hapus semua riwayat?")){ history = []; localStorage.removeItem("faceshape_history_v1"); renderHistory(); }
+/* clear history */
+document.getElementById('clearHistory').addEventListener('click', ()=>{
+  if(confirm('Hapus semua riwayat?')){ history=[]; localStorage.removeItem('faceshape_mediapipe_history_v1'); renderHistory(); }
 });
 
-/* ---------- Analyze / re-run ---------- */
-analyzeBtn.addEventListener("click", async ()=>{
-  if(previewImg.src) await detectFromImage(previewImg);
+/* theme toggle */
+document.getElementById('themeBtn').addEventListener('click', ()=>{
+  const b = document.body; b.setAttribute('data-theme', b.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 });
 
-/* ---------- theme toggle ---------- */
-const themeBtn = document.getElementById("themeBtn");
-themeBtn.addEventListener("click", ()=>{
-  const el = document.body;
-  const cur = el.getAttribute("data-theme") || "dark";
-  el.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+/* cleanup badges on resize/scroll to reposition */
+window.addEventListener('resize', ()=> drawAll());
+window.addEventListener('scroll', ()=> drawAll());
+
+/* --- small helper: when faceMesh outputs results, it triggers onResults which calls drawAll & showResultFor --- */
+/* We already set faceMesh.onResults earlier via initFaceMesh. But Mediapipe's FaceMesh requires an input pipeline.
+   We call faceMesh.send({image: preview}) after loading an image.
+*/
+
+/* show initial state */
+showProcessing(false);
+showOverlay(false);
+modelStatus.innerText = 'Inisialisasi...';
+
+// Wait until FaceMesh instance is ready
+// (initFaceMesh sets up faceMesh and onResults earlier)
+setTimeout(()=>{
+  if(faceMesh) modelStatus.innerText = 'Model siap ✅';
+  else modelStatus.innerText = 'Model belum siap';
+}, 800);
+
+/* small safety: when preview is clicked, toggle drawing to allow selecting image area */
+preview.addEventListener('load', ()=> {
+  // remove previous badges
+  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
+  // fit overlay size and position (overlay is absolutely positioned inside drop area, so compute offset)
+  // place overlay at top-left inside drop area
+  const rect = drop.getBoundingClientRect();
+  overlay.style.left = '12px'; overlay.style.top = '12px';
+  overlay.style.position = 'absolute';
+  // set overlay DOM size to match image natural size and display scaled
+  fitCanvas();
 });
 
-/* ---------- click on overlay labels (delegation) ----------
-   Because labels are appended to body, we also allow clicking on canvas to pick face by coordinate.
------------------------------------------------------------- */
-overlay.addEventListener("click", (ev)=>{
-  // compute natural coords from click
-  const rect = previewImg.getBoundingClientRect();
-  const px = ev.clientX - rect.left;
-  const py = ev.clientY - rect.top;
-  const nx = px * (previewImg.naturalWidth/rect.width);
-  const ny = py * (previewImg.naturalHeight/rect.height);
-  // find which detection box contains this point
-  for(let i=0;i<detections.length;i++){
-    const b = detections[i].box;
-    if(nx >= b.x && nx <= b.x + b.width && ny >= b.y && ny <= b.y + b.height){
-      selectFace(i);
-      break;
-    }
-  }
+/* remove badges when leaving page */
+window.addEventListener('beforeunload', ()=>{
+  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
 });
-
-/* ---------- small util to wait for image load natural sizes ---------- */
-async function ensureImageLoaded(img){
-  if(img.complete && img.naturalWidth) return;
-  return new Promise(res=>{ img.onload = ()=> res(); });
-}
-
-/* export functions for console debugging (optional) */
-window._fs = {
-  detectFromImage, loadImageFromURL, detections
-};
-
 </script>
 </body>
 </html>
