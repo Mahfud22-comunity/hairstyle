@@ -3,606 +3,487 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>FaceMesh Styler — Mediapipe Face Shape</title>
+<title>FaceShape Styler — Versi Akurat (Mediapipe)</title>
 
-<!-- Mediapipe Face Mesh + drawing utils + camera utils -->
+<!-- Mediapipe libs -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
 <style>
-  :root{
-    --bg1:#0f1724; --bg2:#10203a; --card: rgba(255,255,255,0.04);
-    --accent:#00d4ff; --muted:#cbd5e1;
-  }
-  [data-theme="light"]{
-    --bg1:#f6fafc; --bg2:#eef6fb; --card: rgba(0,0,0,0.04); --accent:#0ea5a5; --muted:#123;
-  }
-
+  :root{ --bg:#081226; --card: rgba(255,255,255,0.03); --accent:#00d4ff; --muted:#cbd5e1; }
+  [data-theme="light"]{ --bg:#f6fafc; --card: rgba(0,0,0,0.04); --accent:#0ea5a5; --muted:#123; }
   *{box-sizing:border-box}
-  body{
-    margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial; color:var(--muted);
-    background: linear-gradient(135deg,var(--bg1),var(--bg2));
-    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:28px;
-  }
-
-  .app{ width:100%; max-width:1100px; display:grid; grid-template-columns:1fr 360px; gap:20px; }
-
-  .panel{ background:var(--card); border-radius:14px; padding:16px; backdrop-filter: blur(8px); box-shadow:0 8px 30px rgba(2,6,23,0.6); }
-
-  header{ grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px; }
-  h1{margin:0;font-size:18px}
-
-  .controls{ display:flex; gap:8px; align-items:center;}
-  .btn{ background:var(--accent); border:none; padding:8px 12px; border-radius:10px; color:#000; font-weight:700; cursor:pointer; }
-  .btn.ghost{ background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04); }
-  .file-label{ padding:10px;border-radius:10px; border:2px dashed rgba(255,255,255,0.04); cursor:pointer; display:inline-block; }
-
-  .stage{ display:flex; flex-direction:column; gap:12px; }
-  .drop-area{ position:relative; border-radius:12px; padding:12px; min-height:420px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; border:2px dashed rgba(255,255,255,0.04); }
-  .drop-area.drag{ border-color: rgba(0,212,255,0.8); box-shadow:0 10px 40px rgba(0,212,255,0.06); }
-
-  #preview{ max-width:100%; max-height:560px; border-radius:12px; display:block; object-fit:contain; }
-  canvas#overlay{ position:absolute; left:12px; top:12px; pointer-events:auto; border-radius:12px; }
-
-  .actions{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
-
-  .sidebar .card{ margin-bottom:12px; }
-
-  .history-item{ display:flex; gap:8px; align-items:center; cursor:pointer; padding:6px; border-radius:8px; }
-  .thumb{ width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid rgba(255,255,255,0.03); }
-
-  .loader{ width:36px; height:36px; border:4px solid rgba(255,255,255,0.08); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; margin:auto;}
+  body{ margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial; background:linear-gradient(135deg,var(--bg),#10203a); color:var(--muted); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;}
+  .app{ width:100%; max-width:980px; display:grid; grid-template-columns:1fr 330px; gap:18px; }
+  .panel{ background:var(--card); border-radius:12px; padding:14px; backdrop-filter:blur(8px); }
+  header{ grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  h1{ margin:0; font-size:18px }
+  .controls{ display:flex; gap:8px; align-items:center }
+  .btn{ background:var(--accent); color:#000; border:none; padding:8px 10px; border-radius:10px; cursor:pointer; font-weight:700 }
+  .btn.ghost{ background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04) }
+  .drop{ min-height:420px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; border:2px dashed rgba(255,255,255,0.04); position:relative; }
+  #preview{ max-width:100%; border-radius:10px; display:block; object-fit:contain; }
+  canvas#overlay{ position:absolute; left:12px; top:12px; pointer-events:auto; }
+  .loader{ width:36px;height:36px;border:4px solid rgba(255,255,255,0.08); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; margin:auto;}
   @keyframes spin{ to{transform:rotate(360deg)} }
-
-  .face-badge{ position:absolute; background:var(--accent); color:#000; padding:6px 8px; border-radius:8px; font-weight:800; transform:translate(-50%,-140%); pointer-events:auto; cursor:pointer; }
-
-  .result-card{ padding:10px; border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); }
-
-  @media (max-width:980px){ .app{ grid-template-columns: 1fr; } .sidebar{ order:2 } }
+  .badge{ position:absolute; background:var(--accent); color:#000; padding:6px 8px; border-radius:8px; font-weight:800; transform:translate(-50%,-140%); cursor:pointer; }
+  .result{ margin-top:12px; padding:10px; border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent) }
+  .muted{ color:var(--muted); font-size:13px }
+  @media(max-width:900px){ .app{ grid-template-columns:1fr } .sidebar{ order:2 } }
 </style>
 </head>
 <body data-theme="dark">
-
 <div class="app">
 
   <header>
     <div>
-      <h1>FaceMesh Styler (Mediapipe)</h1>
-      <div style="font-size:13px;color:var(--muted)">Deteksi bentuk wajah — offline client-side setelah model di-cache</div>
+      <h1>FaceShape Styler — Versi Akurat</h1>
+      <div class="muted">Mediapipe Face Mesh • normalisasi • jaw curvature • smoothing</div>
     </div>
-
     <div class="controls">
       <button id="themeBtn" class="btn ghost">Toggle Theme</button>
-      <button id="clearHistory" class="btn ghost">Clear History</button>
     </div>
   </header>
 
-  <!-- left -->
-  <section class="panel stage">
-    <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:13px;color:var(--muted)">Model status: <span id="modelStatus" style="font-weight:700">Memuat...</span></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <label class="file-label">
-          Pilih file
-          <input id="fileInput" type="file" accept="image/*" style="display:none" />
-        </label>
-        <button id="webcamBtn" class="btn ghost">Buka Kamera</button>
-        <button id="captureBtn" class="btn" style="display:none">Ambil Foto</button>
-      </div>
+  <!-- main -->
+  <section class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div class="muted">Model: Mediapipe FaceMesh</div>
+      <div id="status" class="muted">Siap</div>
     </div>
 
-    <div id="drop" class="drop-area">
-      <div id="dropHint" style="text-align:center">
-        <div style="font-weight:700;color:var(--muted)">Seret & lepas foto di sini</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:6px">atau pilih file / gunakan kamera</div>
+    <div class="drop" id="dropArea">
+      <div id="dropHint" class="muted" style="text-align:center">
+        Seret & lepas foto di sini / atau pilih file / atau gunakan kamera
       </div>
 
-      <img id="preview" alt="preview" style="display:none" />
+      <img id="preview" alt="preview" style="display:none">
       <canvas id="overlay" style="display:none"></canvas>
 
       <div id="processing" style="display:none">
         <div class="loader"></div>
-        <div style="font-size:13px;color:var(--muted);margin-top:8px">Memproses...</div>
+        <div class="muted" style="margin-top:8px">Memproses...</div>
       </div>
     </div>
 
-    <div class="actions">
-      <button id="analyzeBtn" class="btn" disabled>Deteksi Ulang</button>
-      <button id="downloadBtn" class="btn ghost" disabled>Download Hasil</button>
-      <button id="saveBtn" class="btn" disabled>Simpan Riwayat</button>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+      <label class="btn ghost" style="display:inline-block">
+        Pilih File
+        <input id="fileInput" type="file" accept="image/*" style="display:none">
+      </label>
+      <button id="webcamBtn" class="btn ghost">Buka Kamera</button>
+      <button id="captureBtn" class="btn" style="display:none">Ambil Foto</button>
+      <button id="loadSample" class="btn ghost">Load Sample</button>
     </div>
 
-    <div id="resultPanel" class="result-card" style="display:none;margin-top:10px">
+    <div class="result" id="resultPanel" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
-          <div style="font-size:13px;color:var(--muted)">Hasil:</div>
-          <div id="shapeText" style="font-size:18px;font-weight:800;color:var(--muted)">-</div>
+          <div class="muted">Hasil Analisis</div>
+          <div id="shapeText" style="font-size:18px;font-weight:800">-</div>
         </div>
-        <div id="metricBox" style="text-align:right;font-size:13px;color:var(--muted)"></div>
+        <div id="metricText" class="muted" style="text-align:right"></div>
       </div>
-      <div style="margin-top:10px">
-        <div style="font-size:13px;color:var(--muted)">Rekomendasi:</div>
-        <ul id="recList"></ul>
+      <div style="margin-top:8px">
+        <div class="muted">Rekomendasi:</div>
+        <ul id="recoList"></ul>
       </div>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button id="downloadBtn" class="btn ghost">Download PNG</button>
+        <button id="saveBtn" class="btn ghost">Simpan Riwayat</button>
+      </div>
+      <div id="warning" class="muted" style="margin-top:8px;color:#ffcc00;display:none"></div>
     </div>
+
   </section>
 
-  <!-- right (sidebar) -->
+  <!-- sidebar -->
   <aside class="panel sidebar">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div style="font-size:13px;color:var(--muted);font-weight:700">Riwayat Analisis</div>
-          <div style="font-size:12px;color:var(--muted)">Tersimpan di local</div>
-        </div>
-        <div id="historyCount" style="font-weight:700;color:var(--muted)">0</div>
-      </div>
-
-      <div id="historyList" style="margin-top:10px;max-height:420px;overflow:auto"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="muted" style="font-weight:700">Riwayat</div>
+      <div id="histCount" class="muted">0</div>
     </div>
-
-    <div class="card" style="margin-top:12px">
-      <div style="font-size:13px;color:var(--muted);font-weight:700">Petunjuk</div>
-      <ol style="font-size:13px;color:var(--muted);margin-top:8px;padding-left:18px">
-        <li>Gunakan foto frontal (wajah menghadap kamera).</li>
-        <li>Jika ada beberapa wajah, klik badge di atas foto untuk memilih.</li>
-        <li>Simpan hasil jika ingin melihat kembali.</li>
+    <div id="history" style="margin-top:8px;max-height:560px;overflow:auto"></div>
+    <div style="margin-top:12px">
+      <div class="muted" style="font-weight:700">Petunjuk Singkat</div>
+      <ol style="padding-left:18px" class="muted">
+        <li>Gunakan foto frontal, tanpa banyak bayangan.</li>
+        <li>Jika hasil tidak akurat, coba foto lain atau gunakan kamera.</li>
+        <li>Jika wajah miring, akan muncul peringatan.</li>
       </ol>
     </div>
   </aside>
 
 </div>
 
-<!-- hidden video for webcam -->
+<!-- hidden video -->
 <video id="video" autoplay playsinline style="display:none"></video>
 
 <script>
-/* =========================
-   FaceMesh Styler (Mediapipe)
-   - Upload/Drag&Drop
-   - Webcam capture
-   - Multi-face detection
-   - Draw mesh & bounding box
-   - Compute simple heuristics to decide face shape
-   - Save history (localStorage)
-   ========================= */
+/* Versi akurat: normalisasi + jaw curvature + smoothing */
+const MODEL_OPTIONS = { maxNumFaces: 4, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 };
 
 const preview = document.getElementById('preview');
 const overlay = document.getElementById('overlay');
-const drop = document.getElementById('drop');
-const dropHint = document.getElementById('dropHint');
-const processing = document.getElementById('processing');
-const modelStatus = document.getElementById('modelStatus');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const saveBtn = document.getElementById('saveBtn');
+const dropArea = document.getElementById('dropArea');
+const fileInput = document.getElementById('fileInput');
+const processingBox = document.getElementById('processing');
 const resultPanel = document.getElementById('resultPanel');
 const shapeText = document.getElementById('shapeText');
-const recList = document.getElementById('recList');
-const metricBox = document.getElementById('metricBox');
-const fileInput = document.getElementById('fileInput');
-const historyList = document.getElementById('historyList');
-const historyCount = document.getElementById('historyCount');
-
-const video = document.getElementById('video');
-const webcamBtn = document.getElementById('webcamBtn');
-const captureBtn = document.getElementById('captureBtn');
+const recoList = document.getElementById('recoList');
+const metricText = document.getElementById('metricText');
+const warningBox = document.getElementById('warning');
+const downloadBtn = document.getElementById('downloadBtn');
+const saveBtn = document.getElementById('saveBtn');
+const historyEl = document.getElementById('history');
+const histCount = document.getElementById('histCount');
+const statusEl = document.getElementById('status');
+const loadSampleBtn = document.getElementById('loadSample');
 
 let faceMesh = null;
-let cameraInstance = null;
-let detections = []; // {box:{x,y,w,h}, landmarks: [ {x,y,z} ... ] }
-let selectedFace = 0;
-let currentImageSrc = null;
+let detections = []; // array of {box, landmarks(px)}
+let smoothingState = {}; // store EMA for metrics when using webcam/live
 let history = loadHistory();
+renderHistory();
 
-/* Recommendation map */
 const RECO = {
-  "Oval": ["Shaggy Cut","Pixie Cut","Bob","Layered Cut"],
-  "Bulat": ["Layer Panjang","Side Part","Curtain Bang","Long Waves"],
-  "Kotak": ["Soft Layer","Wavy Medium","Side Bob","Feathered Cut"],
-  "Heart": ["Chin-Length Bob","Side Sweep","Long Curl","Soft Pixie"],
-  "Diamond": ["Medium Layer","Curly Bob","Shag Soft","Side Bangs"],
-  "Oblong": ["Side Fringe","Layered Long","Medium Waves","Curtain Style"]
+  "Oval":["Shaggy Cut","Pixie Cut","Bob Short","Layered Cut"],
+  "Bulat":["Layer Panjang","Side Part","Curtain Bang","Long Waves"],
+  "Kotak":["Soft Layer","Wavy Medium","Side Bob","Feathered Cut"],
+  "Heart":["Chin-Length Bob","Side Sweep","Long Curl","Soft Pixie"],
+  "Diamond":["Medium Layer","Curly Bob","Shag Soft","Side Bangs"],
+  "Oblong":["Side Fringe","Layered Long","Medium Waves","Curtain Style"]
 };
 
-/* --- Utility --- */
-function showProcessing(flag){
-  processing.style.display = flag ? "flex" : "none";
-}
-function showOverlay(flag){
-  overlay.style.display = flag ? "block" : "none";
-}
-function clearCanvas(){
-  const ctx = overlay.getContext('2d');
-  ctx.clearRect(0,0,overlay.width,overlay.height);
-  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
-}
+/* UTIL */
+function showProcessing(flag){ processingBox.style.display = flag ? 'flex' : 'none'; }
+function showOverlay(flag){ overlay.style.display = flag ? 'block' : 'none'; }
+function clearOverlay(){ const ctx = overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height); document.querySelectorAll('.badge').forEach(n=>n.remove()); }
+function distance(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+function toNatural(pt){ return { x: pt.x * overlay.width, y: pt.y * overlay.height, z: pt.z }; }
 
-/* Fit overlay canvas to displayed image size */
+/* Fit overlay to image natural size and scale to displayed size */
 function fitCanvas(){
   overlay.width = preview.naturalWidth || preview.width;
   overlay.height = preview.naturalHeight || preview.height;
   overlay.style.width = preview.clientWidth + 'px';
   overlay.style.height = preview.clientHeight + 'px';
-  // position relative handled by parent (overlay is absolute positioned inside drop area)
+  overlay.style.left = preview.offsetLeft + 'px';
+  overlay.style.top = preview.offsetTop + 'px';
 }
 
-/* map normalized mediapipe coords to natural px */
-function toNaturalPoint(pt){
-  return { x: pt.x * (overlay.width), y: pt.y * (overlay.height), z: pt.z };
+/* Jaw curvature: compute average distance of jaw points to line (jawLeft - jawRight).
+   Lower curvature -> straighter jaw -> more likely 'Kotak' */
+function jawCurvature(jawPoints){
+  // jawPoints: array of points along jawline in natural px
+  const left = jawPoints[0], right = jawPoints[jawPoints.length-1];
+  const A = {x:left.x,y:left.y}, B={x:right.x,y:right.y};
+  const ABx = B.x - A.x, ABy = B.y - A.y;
+  const lenAB = Math.hypot(ABx,ABy) || 1;
+  let sum = 0;
+  for(let p of jawPoints){
+    // distance from p to line AB
+    const proj = Math.abs(ABx*(A.y - p.y) - ABy*(A.x - p.x)) / lenAB;
+    sum += proj;
+  }
+  return sum / jawPoints.length; // mean deviation
 }
 
-/* draw detections */
-function drawAll(){
-  if(!preview.src) return;
-  fitCanvas();
-  const ctx = overlay.getContext('2d');
-  ctx.clearRect(0,0,overlay.width,overlay.height);
-
-  detections.forEach((d,i) => {
-    const box = d.box;
-    // box in natural px
-    ctx.lineWidth = (i===selectedFace)?6:3;
-    ctx.strokeStyle = (i===selectedFace)?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.45)';
-    ctx.fillStyle = (i===selectedFace)?'rgba(0,212,255,0.06)':'rgba(255,255,255,0.02)';
-    ctx.beginPath();
-    ctx.rect(box.x, box.y, box.width, box.height);
-    ctx.fill();
-    ctx.stroke();
-
-    // draw mesh for selected face
-    if(i===selectedFace){
-      // draw some face landmarks
-      ctx.fillStyle = 'rgba(0,212,255,0.06)';
-      ctx.strokeStyle = 'rgba(0,212,255,0.25)';
-      d.landmarks.forEach(p => {
-        // small circle
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.2, 0, Math.PI*2);
-        ctx.fill();
-      });
-    }
-
-    // add clickable badge label above box (DOM element)
-    const existing = document.getElementById('badge-'+i);
-    if(!existing){
-      const badge = document.createElement('div');
-      badge.className = 'face-badge';
-      badge.id = 'badge-'+i;
-      badge.innerText = `Face ${i+1}`;
-      // position relative to preview DOM position
-      // compute display coords
-      const rect = preview.getBoundingClientRect();
-      const scaleX = preview.clientWidth / preview.naturalWidth;
-      const scaleY = preview.clientHeight / preview.naturalHeight;
-      const left = rect.left + (box.x * scaleX) + (box.width * scaleX)/2;
-      const top = rect.top + (box.y * scaleY);
-      badge.style.left = left + 'px';
-      badge.style.top = top + 'px';
-      document.body.appendChild(badge);
-      badge.addEventListener('click', ()=>{ selectedFace = i; showResultFor(i); drawAll(); });
-    } else {
-      // reposition existing
-      const rect = preview.getBoundingClientRect();
-      const scaleX = preview.clientWidth / preview.naturalWidth;
-      const scaleY = preview.clientHeight / preview.naturalHeight;
-      existing.style.left = (rect.left + (box.x * scaleX) + (box.width * scaleX)/2) + 'px';
-      existing.style.top = (rect.top + (box.y * scaleY)) + 'px';
-    }
-  });
-
-  // remove extra badges if less faces than before
-  document.querySelectorAll('.face-badge').forEach(el=>{
-    const id = el.id;
-    const idx = parseInt(id.split('-')[1]);
-    if(idx >= detections.length) el.remove();
-  });
-}
-
-/* --- Face shape heuristics ---
-   Using Mediapipe 468 landmarks. We'll use some well-known indices:
-   - Chin (152)
-   - Left cheek (~234)
-   - Right cheek (~454)
-   - Jaw left (~127), jaw right (~356)
-   - Forehead approx: average of points near eyebrows (10 and 338/  'upper' points). We'll use point 10 (approx forehead near hairline)
-   These heuristics are approximate and work well for frontal photos.
-*/
-function computeMetrics(landmarks){
-  // landmarks is array of {x:..., y:..., z:...} in natural px
-  const idx = (i) => landmarks[i];
+/* compute metrics (natural px coords in landmarks array) */
+function computeMetricsFromLandmarks(landmarks){
+  // indices from Mediapipe face mesh
+  const idx = i => landmarks[i];
   const chin = idx(152);
+  const forehead = idx(10); // approx upper center
   const leftCheek = idx(234);
   const rightCheek = idx(454);
   const jawLeft = idx(127);
   const jawRight = idx(356);
-  // point 10 is near center forehead
-  const forehead = idx(10);
+  // collect jaw points 0..16 mapping to face_mesh indexes around jaw
+  const jawIdxs = [ 234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 369 ]; // approximate chain
+  const jawPoints = jawIdxs.map(i => idx(i));
 
   const faceWidth = distance(leftCheek, rightCheek);
   const jawWidth = distance(jawLeft, jawRight);
+  const foreheadWidth = distance(idx(10+70)||forehead, idx(338)); // fallback: use 10 and 338 area
+  // better: use distance between landmarks near temples: 127 & 356 approximations for jaw temples; use 10 & 338 for forehead extremes
+  const fLeft = idx(10) || forehead;
+  const fRight = idx(338) || forehead;
+  const foreheadW = distance(fLeft, fRight);
   const faceHeight = distance(forehead, chin);
+  const pupilLeft = idx(33); // approx
+  const pupilRight = idx(263);
+  const interPupil = distance(pupilLeft, pupilRight) || 1;
+  const jawCurve = jawCurvature(jawPoints);
 
-  return { faceWidth, jawWidth, faceHeight, chin, forehead };
+  return {
+    faceWidth, jawWidth, foreheadW, faceHeight, interPupil, jawCurve,
+    leftCheek, rightCheek, jawLeft, jawRight, chin, forehead
+  };
 }
 
-function distance(a,b){
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
+/* decide shape with multiple metrics and heuristics */
 function decideShape(metrics){
-  const {faceWidth, jawWidth, faceHeight} = metrics;
-  const h_w = faceHeight / faceWidth;
-  // tune thresholds (empirical)
-  if(h_w > 1.5) return "Oblong";
-  if(Math.abs(faceWidth - jawWidth) < Math.max(12, faceWidth*0.08)) return "Kotak";
-  if(jawWidth < faceWidth * 0.78) return "Heart";
-  if(faceWidth > jawWidth * 1.28) return "Diamond";
-  if(faceWidth / faceHeight > 0.96) return "Bulat";
+  // normalize by interPupil to remove scale
+  const fw = metrics.faceWidth / metrics.interPupil;
+  const jw = metrics.jawWidth / metrics.interPupil;
+  const fh = metrics.faceHeight / metrics.interPupil;
+  const fw_ratio = fw / fh; // width-to-height
+  const jaw_to_face = jw / fw; // proportion
+  const jawCurve = metrics.jawCurve / metrics.interPupil;
+
+  // pose safety thresholds already checked before calling this
+  // heuristics (tunable)
+  if(fh / fw > 1.55) return "Oblong";
+  if(Math.abs(fw - jw) / fw < 0.08 && jawCurve < 6) return "Kotak"; // similar widths and small curvature (straight jaw)
+  if(jaw_to_face < 0.72 && jawCurve > 6) return "Heart"; // narrow jaw, sharper chin
+  if(fw / fh > 0.98 && jawCurve > 5 && jaw_to_face > 0.9) return "Bulat";
+  if(fw / fh > 0.95 && jaw_to_face > 1.05) return "Diamond";
   return "Oval";
 }
 
-/* show result for a selected face index */
-function showResultFor(i){
-  if(!detections[i]) return;
-  const metrics = computeMetrics(detections[i].landmarks);
-  const shape = decideShape(metrics);
-  shapeText.innerText = shape;
-  metricBox.innerHTML = `Rasio H/W: ${(metrics.faceHeight/metrics.faceWidth).toFixed(2)}`;
-  recList.innerHTML = '';
-  (RECO[shape] || []).forEach(r=>{
-    const li = document.createElement('li'); li.innerText = r; recList.appendChild(li);
+/* smoothing EMA helper */
+function ema(old, value, alpha=0.35){
+  if(old === undefined || old === null) return value;
+  return alpha*value + (1-alpha)*old;
+}
+
+/* drawing & UI */
+function drawDetections(){
+  if(!preview.naturalWidth) return;
+  fitCanvas();
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  // remove old badges
+  document.querySelectorAll('.badge').forEach(n=>n.remove());
+
+  detections.forEach((d,i)=>{
+    const b = d.box;
+    ctx.lineWidth = (i===selectedFace)?6:3;
+    ctx.strokeStyle = (i===selectedFace)?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.45)';
+    ctx.fillStyle = (i===selectedFace)?'rgba(0,212,255,0.06)':'rgba(255,255,255,0.02)';
+    ctx.beginPath();
+    ctx.rect(b.x,b.y,b.width,b.height);
+    ctx.fill(); ctx.stroke();
+
+    // place badge
+    const rect = preview.getBoundingClientRect();
+    const scaleX = preview.clientWidth / preview.naturalWidth;
+    const scaleY = preview.clientHeight / preview.naturalHeight;
+    const left = rect.left + (b.x * scaleX) + (b.width * scaleX)/2;
+    const top = rect.top + (b.y * scaleY);
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.id = 'badge-'+i;
+    badge.innerText = 'Face ' + (i+1);
+    badge.style.left = left + 'px';
+    badge.style.top = top + 'px';
+    document.body.appendChild(badge);
+    badge.addEventListener('click', ()=>{ selectFace(i); });
   });
+}
+
+/* select face and show result */
+let selectedFace = 0;
+function selectFace(i){
+  selectedFace = i;
+  drawDetections();
+  const d = detections[i];
+  if(!d) return;
+  const metrics = computeMetricsFromLandmarks(d.landmarks);
+  // apply smoothing (update smoothingState)
+  const key = 'face'+i;
+  smoothingState[key] = smoothingState[key] || {};
+  smoothingState[key].faceWidth = ema(smoothingState[key].faceWidth, metrics.faceWidth);
+  smoothingState[key].jawWidth = ema(smoothingState[key].jawWidth, metrics.jawWidth);
+  smoothingState[key].faceHeight = ema(smoothingState[key].faceHeight, metrics.faceHeight);
+  smoothingState[key].jawCurve = ema(smoothingState[key].jawCurve, metrics.jawCurve);
+  smoothingState[key].interPupil = ema(smoothingState[key].interPupil, metrics.interPupil);
+
+  // use smoothed values for decision
+  const sm = {
+    faceWidth: smoothingState[key].faceWidth,
+    jawWidth: smoothingState[key].jawWidth,
+    faceHeight: smoothingState[key].faceHeight,
+    jawCurve: smoothingState[key].jawCurve,
+    interPupil: smoothingState[key].interPupil
+  };
+  const shape = decideShape(sm);
+  showResult(shape, sm);
+}
+
+/* show result UI */
+function showResult(shape, metrics){
+  shapeText.innerText = shape;
+  metricText.innerText = 'Rasio H/W: ' + (metrics.faceHeight/metrics.faceWidth).toFixed(2) + ' • JawCurve: ' + (metrics.jawCurve/metrics.interPupil).toFixed(2);
+  recoList.innerHTML = '';
+  (RECO[shape] || []).forEach(r => { const li = document.createElement('li'); li.innerText = r; recoList.appendChild(li);});
   resultPanel.style.display = 'block';
   downloadBtn.disabled = false;
   saveBtn.disabled = false;
 }
 
-/* --- Handlers for mediapipe results --- */
-function onResults(results){
-  // results.multiFaceLandmarks: array of landmarks in normalized coords (x,y in [0..1]) relative to image
-  // results.image is the input image (HTMLImageElement/HTMLVideoElement/HTMLCanvasElement)
-  clearCanvas();
-  detections = [];
-  if(!results.multiFaceLandmarks || results.multiFaceLandmarks.length===0){
-    showProcessing(false); drawAll(); return;
-  }
-
-  // prepare overlay dimensions based on natural size of input image
-  // set overlay to input natural size
-  // results.image may be preview image element passed; we'll assume preview has naturalWidth/naturalHeight
-  fitCanvas();
-
-  // convert normalized to natural px coords and make bounding box
-  results.multiFaceLandmarks.forEach(landArr => {
-    const pts = landArr.map(p => toNaturalPoint(p));
-    // compute bounding box
-    const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const box = { x: minX, y: minY, width: (maxX - minX), height: (maxY - minY) };
-    detections.push({ box, landmarks: pts });
-  });
-
-  // default select first face if new
-  selectedFace = 0;
-  drawAll();
-  showProcessing(false);
-  showResultFor(selectedFace);
-}
-
-/* --- Initialize Mediapipe FaceMesh --- */
-async function initFaceMesh(){
-  modelStatus.innerText = "Memuat model FaceMesh...";
-  faceMesh = new FaceMesh({
-    locateFile: (file) => {
-      // Mediapipe will fetch model files from CDN automatically
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-    }
-  });
-  faceMesh.setOptions({
-    maxNumFaces: 4,
-    refineLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-  faceMesh.onResults(onResults);
-  modelStatus.innerText = "Model siap ✅";
-}
-initFaceMesh();
-
-/* --- File & drag/drop handlers --- */
-fileInput.addEventListener('change', async (e)=>{
-  const f = e.target.files && e.target.files[0];
-  if(!f) return;
-  const url = URL.createObjectURL(f);
-  await loadImage(url);
-});
-
-drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
-drop.addEventListener('dragleave', e=>{ e.preventDefault(); drop.classList.remove('drag'); });
-drop.addEventListener('drop', async (e)=>{
-  e.preventDefault(); drop.classList.remove('drag');
-  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-  if(!f) return;
-  const url = URL.createObjectURL(f);
-  await loadImage(url);
-});
-
-/* load image into preview and run faceMesh */
-async function loadImage(src){
-  // reset
-  clearCanvas(); resultPanel.style.display = 'none';
-  showProcessing(true);
-  preview.style.display = 'none';
-  // remove existing badges
-  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
-
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = async ()=>{
-    preview.src = src;
-    currentImageSrc = src;
-    // wait image DOM updates
-    preview.style.display = 'block';
-    // ensure overlay sizing (after image rendered)
-    await new Promise(r => setTimeout(r, 120));
-    fitCanvas();
-    showOverlay(true);
-    // send the image element to FaceMesh
-    await faceMesh.send({image: preview});
-  };
-  img.onerror = ()=>{
-    showProcessing(false);
-    alert('Gagal memuat gambar.');
-  };
-  img.src = src;
-}
-
-/* --- Webcam support --- */
-let streamRef = null;
-webcamBtn.addEventListener('click', async ()=>{
-  if(streamRef){
-    // stop camera
-    streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display='none'; captureBtn.style.display='none'; webcamBtn.innerText='Buka Kamera';
-    return;
-  }
-  try{
-    streamRef = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
-    video.srcObject = streamRef;
-    video.style.display = 'block';
-    captureBtn.style.display = 'inline-block';
-    webcamBtn.innerText = 'Tutup Kamera';
-    // optionally preview video inside drop area when wanted
-    // We'll capture still when user clicks capture
-  } catch(err){
-    alert('Tidak dapat mengakses kamera: ' + err.message);
-  }
-});
-
-captureBtn.addEventListener('click', async ()=>{
-  // capture a frame from video to canvas then load as image
-  const c = document.createElement('canvas');
-  c.width = video.videoWidth; c.height = video.videoHeight;
-  const ctx = c.getContext('2d'); ctx.drawImage(video,0,0,c.width,c.height);
-  const data = c.toDataURL('image/png');
-  // stop camera
-  if(streamRef){ streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display='none'; captureBtn.style.display='none'; webcamBtn.innerText='Buka Kamera'; }
-  await loadImage(data);
-});
-
-/* --- analyze / re-run button --- */
-analyzeBtn.addEventListener('click', async ()=>{
+/* save history */
+function saveHistory(){
   if(!preview.src) return;
-  showProcessing(true);
-  // re-run faceMesh on preview
-  await faceMesh.send({image: preview});
-});
+  const ent = { id: Date.now(), date: new Date().toISOString(), image: preview.src, shape: shapeText.innerText };
+  history.unshift(ent); if(history.length>40) history.pop();
+  localStorage.setItem('faceshape_accurate_history', JSON.stringify(history));
+  renderHistory();
+}
+saveBtn.addEventListener('click', saveHistory);
+function loadHistory(){ try{ const j = localStorage.getItem('faceshape_accurate_history'); return j?JSON.parse(j):[] }catch(e){ return [] } }
+function renderHistory(){ historyEl.innerHTML=''; histCount.innerText = history.length; history.forEach(h => {
+  const row = document.createElement('div'); row.style.display='flex'; row.style.gap='8px'; row.style.alignItems='center'; row.style.padding='6px'; row.style.cursor='pointer';
+  row.innerHTML = `<img src="${h.image}" style="width:56px;height:56px;border-radius:6px;object-fit:cover"><div style="flex:1"><div style="font-weight:700">${h.shape}</div><div class="muted" style="font-size:12px">${new Date(h.date).toLocaleString()}</div></div>`;
+  row.addEventListener('click', ()=> loadImage(h.image));
+  historyEl.appendChild(row);
+}); }
 
-/* --- download result --- */
+/* download image with boxes */
 downloadBtn.addEventListener('click', ()=>{
-  if(!preview.src || detections.length===0) return alert('Tidak ada hasil untuk diunduh');
-  // create canvas with natural size and draw image + boxes + text
-  const c = document.createElement('canvas');
-  c.width = preview.naturalWidth; c.height = preview.naturalHeight;
-  const ctx = c.getContext('2d');
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = ()=>{
+  if(!preview.src || !detections.length) return alert('Tidak ada hasil untuk diunduh');
+  const c = document.createElement('canvas'); c.width = preview.naturalWidth; c.height = preview.naturalHeight;
+  const ctx = c.getContext('2d'); const img = new Image(); img.crossOrigin='anonymous';
+  img.onload = ()=> {
     ctx.drawImage(img,0,0,c.width,c.height);
-    // draw boxes
-    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,212,255,0.9)'; ctx.fillStyle='rgba(0,212,255,0.06)';
-    detections.forEach((d,i)=>{
-      const b = d.box;
-      ctx.beginPath(); ctx.rect(b.x,b.y,b.width,b.height); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(b.x, b.y-30, 120, 28);
-      ctx.fillStyle = '#00f0ff'; ctx.font = '20px sans-serif'; ctx.fillText(`Face ${i+1}`, b.x+6, b.y-8);
-      ctx.fillStyle='rgba(0,212,255,0.06)';
-    });
-    // write result text
-    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, c.height-110, c.width, 110);
-    ctx.fillStyle = '#fff'; ctx.font='26px sans-serif'; ctx.fillText('FaceMesh Styler — Hasil', 18, c.height-72);
-    ctx.font='20px sans-serif'; ctx.fillText(shapeText.innerText || '-', 18, c.height-44);
-
-    const link = document.createElement('a'); link.download = `faceshape_${Date.now()}.png`; link.href = c.toDataURL('image/png'); link.click();
+    ctx.lineWidth = 6; ctx.strokeStyle='rgba(0,212,255,0.9)'; ctx.fillStyle='rgba(0,212,255,0.06)';
+    detections.forEach((d,i)=>{ const b = d.box; ctx.beginPath(); ctx.rect(b.x,b.y,b.width,b.height); ctx.fill(); ctx.stroke(); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(b.x, b.y-28, 110, 24); ctx.fillStyle='#00f0ff'; ctx.font='20px sans-serif'; ctx.fillText('Face '+(i+1), b.x+6, b.y-8); ctx.fillStyle='rgba(0,212,255,0.06)'; });
+    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,c.height-90,c.width,90); ctx.fillStyle='#fff'; ctx.font='24px sans-serif'; ctx.fillText('FaceShape Styler — Hasil', 18, c.height-56); ctx.font='18px sans-serif'; ctx.fillText(shapeText.innerText || '-', 18, c.height-28);
+    const link = document.createElement('a'); link.download = 'faceshape_result.png'; link.href = c.toDataURL('image/png'); link.click();
   };
   img.src = preview.src;
 });
 
-/* --- Save to history (localStorage) --- */
-saveBtn.addEventListener('click', ()=>{
-  if(!preview.src) return;
-  const ent = { id: Date.now(), date: new Date().toISOString(), image: preview.src, shape: shapeText.innerText || '-', rec: Array.from(recList.querySelectorAll('li')).map(x=>x.innerText) };
-  history.unshift(ent); if(history.length>40) history.pop();
-  localStorage.setItem('faceshape_mediapipe_history_v1', JSON.stringify(history));
-  renderHistory();
-  alert('Disimpan ke riwayat lokal.');
-});
+/* faceMesh onResults handler */
+function onResults(results){
+  showProcessing(false);
+  clearOverlay();
+  detections = [];
+  document.querySelectorAll('.badge').forEach(n=>n.remove());
+  warningBox.style.display = 'none';
 
-/* load history */
-function loadHistory(){
-  try{ const j = localStorage.getItem('faceshape_mediapipe_history_v1'); return j?JSON.parse(j):[]; }catch(e){ return []; }
-}
-function renderHistory(){
-  historyList.innerHTML=''; historyCount.innerText = history.length;
-  history.forEach(h=>{
-    const row = document.createElement('div'); row.className='history-item';
-    row.innerHTML = `<img class="thumb" src="${h.image}"><div style="flex:1"><div style="font-weight:700;color:var(--muted)">${h.shape}</div><div style="font-size:12px;color:var(--muted)">${new Date(h.date).toLocaleString()}</div></div>`;
-    row.addEventListener('click', ()=> loadImage(h.image) );
-    historyList.appendChild(row);
+  if(!results.multiFaceLandmarks || results.multiFaceLandmarks.length===0){
+    statusEl.innerText = 'Tidak ada wajah terdeteksi';
+    resultPanel.style.display = 'none';
+    return;
+  }
+  statusEl.innerText = results.multiFaceLandmarks.length + ' wajah terdeteksi';
+
+  // overlay dims
+  fitCanvas();
+
+  // convert normalized coords to natural px
+  results.multiFaceLandmarks.forEach((landArr) => {
+    const pts = landArr.map(p => toNatural(p));
+    // compute bounding box
+    const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+    const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs)-Math.min(...xs), height: Math.max(...ys)-Math.min(...ys) };
+    detections.push({ box, landmarks: pts });
   });
+
+  // if more than one face -> user can pick; default pick first
+  selectedFace = 0;
+  drawDetections();
+  // pose check: compute yaw by comparing mid of eyes x to center of box
+  const midEye = (() => { const lm = results.multiFaceLandmarks[0]; const L = toNatural(lm[33]), R = toNatural(lm[263]); return {x:(L.x+R.x)/2, y:(L.y+R.y)/2}; })();
+  const box0 = detections[0].box;
+  const centerX = box0.x + box0.width/2;
+  const yaw = (midEye.x - centerX) / box0.width; // normalized yaw
+  if(Math.abs(yaw) > 0.18){ // face too turned
+    warningBox.style.display = 'block';
+    warningBox.innerText = 'Wajah terdeteksi miring/berputar — hasil bisa kurang akurat. Coba foto frontal.';
+  }
+
+  selectFace(0);
 }
-renderHistory();
 
-/* clear history */
-document.getElementById('clearHistory').addEventListener('click', ()=>{
-  if(confirm('Hapus semua riwayat?')){ history=[]; localStorage.removeItem('faceshape_mediapipe_history_v1'); renderHistory(); }
+/* INIT FaceMesh */
+async function initFaceMesh(){
+  faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+  });
+  faceMesh.setOptions(MODEL_OPTIONS);
+  faceMesh.onResults(onResults);
+  statusEl.innerText = 'Model siap';
+}
+initFaceMesh();
+
+/* file & drag-drop handling */
+fileInput.addEventListener('change', (ev)=>{ const f = ev.target.files && ev.target.files[0]; if(!f) return; const u = URL.createObjectURL(f); loadImage(u); });
+dropArea.addEventListener('dragover', e=>{ e.preventDefault(); dropArea.style.borderColor = 'rgba(0,212,255,0.7)'; });
+dropArea.addEventListener('dragleave', e=>{ e.preventDefault(); dropArea.style.borderColor = ''; });
+dropArea.addEventListener('drop', e=>{ e.preventDefault(); dropArea.style.borderColor = ''; const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(!f) return; loadImage(URL.createObjectURL(f)); });
+
+/* load local image and run faceMesh */
+async function loadImage(src){
+  showProcessing(true);
+  resultPanel.style.display = 'none';
+  preview.style.display = 'none';
+  document.querySelectorAll('.badge').forEach(n=>n.remove());
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = async ()=>{
+    preview.src = src;
+    preview.onload = async ()=>{
+      preview.style.display = 'block';
+      await new Promise(r=>setTimeout(r,120));
+      fitCanvas();
+      showOverlay(true);
+      // send to mediapipe
+      await faceMesh.send({image: preview});
+    };
+  };
+  img.onerror = ()=> { showProcessing(false); alert('Gagal memuat gambar'); };
+  img.src = src;
+}
+
+/* webcam (optional) */
+const video = document.getElementById('video');
+let streamRef = null;
+const webcamBtn = document.getElementById('webcamBtn');
+const captureBtn = document.getElementById('captureBtn');
+
+webcamBtn.addEventListener('click', async ()=>{
+  if(streamRef){ streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display='none'; captureBtn.style.display='none'; webcamBtn.innerText='Buka Kamera'; return; }
+  try{
+    streamRef = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
+    video.srcObject = streamRef; video.play();
+    video.style.display = 'block'; captureBtn.style.display = 'inline-block'; webcamBtn.innerText='Tutup Kamera';
+  }catch(e){ alert('Gagal akses kamera: '+e.message); }
 });
 
-/* theme toggle */
-document.getElementById('themeBtn').addEventListener('click', ()=>{
-  const b = document.body; b.setAttribute('data-theme', b.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+captureBtn.addEventListener('click', async ()=>{
+  const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight; const ctx = c.getContext('2d'); ctx.drawImage(video,0,0,c.width,c.height);
+  const data = c.toDataURL('image/png');
+  if(streamRef){ streamRef.getTracks().forEach(t=>t.stop()); streamRef=null; video.style.display='none'; captureBtn.style.display='none'; webcamBtn.innerText='Buka Kamera'; }
+  await loadImage(data);
 });
 
-/* cleanup badges on resize/scroll to reposition */
-window.addEventListener('resize', ()=> drawAll());
-window.addEventListener('scroll', ()=> drawAll());
+/* sample loader — path seen in session (may not exist on your machine). If file not found, upload manually */
+loadSampleBtn.addEventListener('click', ()=> {
+  const sample = '/mnt/data/ppppppppppppppScreenshot 2025-11-20 082232.png';
+  loadImage(sample);
+});
 
-/* --- small helper: when faceMesh outputs results, it triggers onResults which calls drawAll & showResultFor --- */
-/* We already set faceMesh.onResults earlier via initFaceMesh. But Mediapipe's FaceMesh requires an input pipeline.
-   We call faceMesh.send({image: preview}) after loading an image.
-*/
+/* small UI wiring */
+document.getElementById('themeBtn').addEventListener('click', ()=> {
+  const b = document.body; b.setAttribute('data-theme', b.getAttribute('data-theme')==='dark' ? 'light' : 'dark');
+});
+document.getElementById('loadSample').addEventListener('click', ()=> {}); // placeholder
 
-/* show initial state */
+/* helper to select face by clicking badge via overlay */
+window.addEventListener('resize', ()=> drawDetections());
+window.addEventListener('scroll', ()=> drawDetections());
+
+/* initial state */
 showProcessing(false);
 showOverlay(false);
-modelStatus.innerText = 'Inisialisasi...';
 
-// Wait until FaceMesh instance is ready
-// (initFaceMesh sets up faceMesh and onResults earlier)
-setTimeout(()=>{
-  if(faceMesh) modelStatus.innerText = 'Model siap ✅';
-  else modelStatus.innerText = 'Model belum siap';
-}, 800);
+/* expose for debugging */
+window._faceDbg = { computeMetricsFromLandmarks, decideShape, detections };
 
-/* small safety: when preview is clicked, toggle drawing to allow selecting image area */
-preview.addEventListener('load', ()=> {
-  // remove previous badges
-  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
-  // fit overlay size and position (overlay is absolutely positioned inside drop area, so compute offset)
-  // place overlay at top-left inside drop area
-  const rect = drop.getBoundingClientRect();
-  overlay.style.left = '12px'; overlay.style.top = '12px';
-  overlay.style.position = 'absolute';
-  // set overlay DOM size to match image natural size and display scaled
-  fitCanvas();
-});
-
-/* remove badges when leaving page */
-window.addEventListener('beforeunload', ()=>{
-  document.querySelectorAll('.face-badge').forEach(n=>n.remove());
-});
 </script>
 </body>
 </html>
